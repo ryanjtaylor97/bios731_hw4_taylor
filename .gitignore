@@ -1,0 +1,13 @@
+## RStudio files
+.Rproj.user
+
+## History
+.Rhistory
+
+## data directories and files
+data
+.DS_Store
+analysis/*_cache/
+drafts/*_cache/
+.RData
+.Ruserdata
