@@ -1,0 +1,232 @@
+---
+title: "BIOS 731 Homework 4: Bayesian Inference and Cluster Computing"
+format: 
+  pdf:
+    number-depth: 4
+    mainfont: Times New Roman
+    include-in-header:
+      - text: |
+          \usepackage{makecell}
+          \usepackage{longtable}
+          \usepackage{mathrsfs}
+    df-print: kable
+    knitr:
+      opts_chunk:
+        echo: true,
+        include: true
+        message: false
+        warning: false
+        results: markup
+        fig.align: center
+        fig.height: 5
+        fig.width: 7
+        fig.path: "../results/"
+        R.options:
+          scipen: 999
+          knitr.kable.NA: ""
+editor: source
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# Clear memory
+rm(list = ls()); gc()
+
+# Load packages
+# if(!require("here")) install.packages("here")
+# if(!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  gtools, DescTools, MASS,
+  tidyverse, magrittr, janitor,
+  knitr, kableExtra, broom, here, tictoc
+)
+```
+
+```{r}
+#| label: source functions
+
+source(here("source", "gibbs_sampler_fn.R"))
+source(here("source", "variational_inference_fn.R"))
+```
+
+
+# Problem 0: Reproducibility
+
+The GitHub repository containing this work can be found at
+
+<https://github.com/ryanjtaylor97/bios731_hw4_taylor>.
+
+# Problem 1: Gibbs sampler
+
+We have the data-generating model:
+
+$$
+\begin{aligned}
+\mu & \sim N(0, \sigma^2) \\
+c_i & \sim Categorical(1/K, \ldots, 1/K) \\
+y_i | c_i, \mu & \sim N(c_i^\top \mu, 1).
+\end{aligned}
+$$
+
+Then first, for the full conditional distribution $p(c_i | y_i, \mu)$, note that $c_i$ can take on one of $K$ different values: $(1,0,\ldots,0); \ (0, 1, 0, \ldots, 0); \ldots; (0, \ldots, 0, 1).$ Each of these possibilities has probability $p(c_{ik} = 1) = {1 \choose 1! * (0!)^{K-1}} * (\frac{1}{K})^1 * (\frac{1}{K})^{K-1} = \frac{1}{K}$. In addition, when $c_{ik} = 1, c_i^\top \mu = \mu_k$. Therefore, we can write
+
+$$
+\begin{aligned}
+p(c_{ik}=1 | y_i, \mu) & \propto p(c_{ik} = 1) * p(y_i | c_{ik} = 1, \mu) \\
+& \propto exp\Big( -\frac{1}{2} (y_i - \mu_k)^2 \Big) * \frac{1}{K} \\
+\implies [c_i | y_i, \mu] & \sim Categorical \Bigg( \frac{\phi(y_i; \mu_k, 1)}{\sum_{k = 1}^K \phi(y_i; \mu_k, 1) } \Bigg),
+\end{aligned}
+$$
+
+where $\phi(\cdot; \mu, \sigma^2)$ is the pdf of a univariate Normal distribution with mean $\mu$ and variance $\sigma^2$.
+
+Second, since we assume all $y_i$'s are independent of each other, we can derive an update all $\mu_k$ parameters at the same time using the entire data vector $\boldsymbol{y}$ and the entire $n \times K$ matrix of group assignments $\boldsymbol{c}$.
+
+$$
+\begin{aligned}
+p(\boldsymbol{\mu} | \boldsymbol{y}, \boldsymbol{c}) & \propto p(\boldsymbol{y} | \boldsymbol{c}, \boldsymbol{\mu}) * p(\boldsymbol{\mu}) \\
+& \propto exp \Big( -\frac{1}{2} (\boldsymbol{y} - \boldsymbol{c}^\top \boldsymbol{\mu})^\top (\boldsymbol{y} - \boldsymbol{c}^\top \boldsymbol{\mu}) \Big) * exp \Big( -\frac{1}{2} \boldsymbol{\mu}^\top \boldsymbol{\mu} \Big) \\
+&\propto exp \Big\{ -\frac{1}{2} \Big[ \boldsymbol{\mu}^\top \Big( \boldsymbol{c}^\top \boldsymbol{c} + \frac{1}{\sigma^2} \mathbf{I}_K \Big) \boldsymbol{\mu} - 2 \boldsymbol{\mu}^\top \boldsymbol{c}^\top \boldsymbol{y} \Big] \Big\} \\
+& \propto exp \Big\{ -\frac{1}{2} \Big[ \boldsymbol{\mu} - \Big( \boldsymbol{c}^\top \boldsymbol{c} + \frac{1}{\sigma^2} \mathbf{I}_K \Big) ^{-1} \Big) \boldsymbol{c}^\top \boldsymbol{y} \Big]^\top \Big( \boldsymbol{c}^\top \boldsymbol{c} + \frac{1}{\sigma^2} \mathbf{I}_K \Big) \Big[ \boldsymbol{\mu} - \Big( \boldsymbol{c}^\top \boldsymbol{c} + \frac{1}{\sigma^2} \mathbf{I}_K \Big) ^{-1} \Big) \boldsymbol{c}^\top \boldsymbol{y} \Big] \Big\} \\
+\implies [\boldsymbol{\mu} | \boldsymbol{y}, \boldsymbol{c}] & \sim N \Bigg( \Big( \boldsymbol{c}^\top \boldsymbol{c} + \frac{1}{\sigma^2} \mathbf{I}_K \Big) ^{-1} \Big) \boldsymbol{c}^\top \boldsymbol{y}, \Big( \boldsymbol{c}^\top \boldsymbol{c} + \frac{1}{\sigma^2} \mathbf{I}_K \Big) ^{-1} \Big) \Bigg).
+\end{aligned}
+$$
+
+Since $\boldsymbol{c}$ is a matrix of indicator vectors, $\boldsymbol{c}^\top \boldsymbol{c}$ is a diagonal matrix, and therefore we can rewrite this as $K$ univariate normal distributions so we do not need to invert a matrix:
+
+$$
+\boldsymbol{c}^\top \boldsymbol{c} = \begin{bmatrix}
+n_1 & 0 & 0 \\
+0 & n_2 & 0 \\
+0 & 0 & n_3
+\end{bmatrix},
+$$
+
+where $n_k = \sum_{i=1}^n c_{ik}$. Therefore, we can write $[\mu_k | \boldsymbol{y}, \boldsymbol{c}] \sim N(\frac{\sum_{i}^n c_{ik}y_i}{n_k + 1/\sigma^2}, \frac{1}{n_k + 1/\sigma^2})$.
+
+These full conditionals are implemented in the Gibbs sampler in the file `source\gibbs_sampler_fn.R`.
+
+# Problem 2: Variational inference
+
+We need to estimate the "latent" parameters $\boldsymbol{\mu}, \boldsymbol{c}$. In order to estimate these, we'll also define the variational parameters $\boldsymbol{m} = \mathbb{E}_q(\boldsymbol{\mu}), \ \boldsymbol{s}^2 = Var_q(\boldsymbol{\mu}), \text{ and } \boldsymbol{\psi} = \mathbb{E}_q(\boldsymbol{c})$, so that $\psi_{ik} = P(c_{ik} = 1)$. Then by a mean-field approximation, we can write 
+
+$$
+\begin{aligned}
+ELBO(q(\boldsymbol{\mu}, \boldsymbol{c})) = {} & E_q[log \ p(y, \mu, c)] - E_q[log \ q(\mu, c)] \\
+= {} & E_q[log \ p(y | \mu, c) + log \ p(\mu) + log \ p(c)] - E_q[log \ q(\mu) + log \ q(c)] \\
+= {} & \sum_{i=1}^n \{ E_q [ log \ p(y_i|c_i, \mu)] + E_q[log \ p(c_i)] \} + \sum_{k=1}^K E_q[log \ p(\mu_k)] - \\
+& \sum_{i=1}^n E_q[log \ q(c_i)] - \sum_{k=1}^K E_q[log \ q(\mu_k)].
+\end{aligned}
+$$
+
+Then by the formula we proved in class, the CAVI update for $c_i$ is 
+
+$$
+\begin{aligned}
+q^*(c_i) & \propto exp \Big\{ log \ p(c_i) + \mathbb{E}_{q(\mu)}[log \ p(x_i | c_i, \mu)] \Big\} \\
+& \propto exp \Big\{ -log(K) + \mathbb{E}_{q(\mu)} \Big[\sum_{k=1}^K c_{ik} *(-\frac{1}{2} (x_i - \mu_k)^2 \Big] \Big\} \\
+& \propto exp \Big\{ \sum_{k=1}^K c_{ik} * \mathbb{E}_{q(\mu)} (-\frac{1}{2} (x_i - \mu_k)^2) \Big\} \\
+& \propto exp \Big\{ \sum_{k=1}^K c_{ik} * \Big[ E(\mu_k) x_i - \frac{1}{2} E(\mu_k^2) \Big] \Big\} \\
+&= exp \Big\{ \sum_{k=1}^K c_{ik} * \Big[ m_k x_i - \frac{1}{2} (s^2_k + m_k^2) \Big] \Big\} \\
+\implies \psi_{ik}^* & \propto exp \Big[ m_k x_i - \frac{1}{2} (s^2_k + m_k^2) \Big]
+\end{aligned}
+$$
+
+Likewise, the CAVI update for $\mu_k$ is 
+
+$$
+\begin{aligned}
+q^*(\mu_k) & \propto exp \Big\{ log \ p(\mu_k) + \mathbb{E}_{q(c)}[log \ p(x_i | c_i, \mu)] \Big\} \\
+& \propto exp \Big\{ -\frac{\mu_k^2}{2 \sigma^2} + \sum_{i=1}^n \mathbb{E}_{q(c)} [ c_{ik} * log \ p(x_i | \mu_k) ] \Big\} \\
+& \propto exp \Big\{ -\frac{\mu_k^2}{2 \sigma^2} + \sum_{i=1}^n \Big[ \psi_{ik} * \Big( -\frac{1}{2} * (x_i - \mu_k)^2 \Big) \Big] \Big\} \\
+& \propto exp \Big\{ \mu_k^2 \Big[ \frac{-1}{2 \sigma^2} + \sum_{i=1}^n \frac{-\psi_{ik}}{2} \Big] + \mu_k \Big[ \sum_{i=1}^n \psi_{ik} x_i \Big] \Big\} \\
+& \propto exp \Big\{ \frac{-1}{2} \Big( \frac{1}{\sigma^2} + \sum_{i=1}^n \psi_{ik} \Big) * \Big[ \mu_k^2 + 2 \mu_k \Big( \frac{1}{\sigma^2} + \sum_{i=1}^n \psi_{ik} \Big)^{-1} \Big( \sum_{i=1}^n \psi_{ik} x_i \Big) + \Big( \frac{1}{\sigma^2} + \sum_{i=1}^n \psi_{ik} \Big)^{-2} \Big( \sum_{i=1}^n \psi_{ik} x_i \Big)^2 \Big] \Big\} \\ \\
+\implies q^*(\mu_k) & = N \Bigg( \frac{\sum_{i=1}^n \psi_{ik} x_i}{\frac{1}{\sigma^2} + \sum_{i=1}^n \psi_{ik}}, \frac{1}{\frac{1}{\sigma^2} + \sum_{i=1}^n \psi_{ik}} \Bigg) \\ \\
+&= N(m_k, s^2_k).
+\end{aligned}
+$$
+
+Finally, we can rewrite the ELBO using these updates:
+
+$$
+\begin{aligned}
+ELBO(q) = {} & \sum_{i=1}^n \{ E_q [ log \ p(y_i|c_i, \mu)] + E_q[log \ p(c_i)] \} + \sum_{k=1}^K E_q[log \ p(\mu_k)] - \\
+& \sum_{i=1}^n E_q[log \ q(c_i)] - \sum_{k=1}^K E_q[log \ q(\mu_k)] \\
+= {} & \sum_{i=1}^n \{ E_{q(c)}[E_{q(\mu)}[-\frac{1}{2} (y_i - \mu_k)^2] | c] \ - log \ K \} + \sum_{k=1}^K E_q \Big[ -\frac{\mu_k}{2 \sigma^2} \Big] - \\
+& \sum_{i=1}^n E_q \Big[ log(\prod_{k=1}^K \psi_{ik}^{c_{ik}}) \Big] - \sum_{k=1}^K E_q \Big[ -\frac{1}{2} log(2 \pi s^2_k) - \frac{1}{2 s^2_k} (\mu_k - m_k)^2 \Big] + \text{constant} \\
+={} & \sum_{i=1}^n \sum_{k=1}^K -\frac{\psi_{ik}}{2} [(y_i - m_k)^2 + s^2_k] - \sum_{k=1}^K \frac{1}{2 \sigma^2} (m^2_k + s^2_k) - \sum_{i=1}^n \sum_{k=1}^K \psi_{ik} log(\psi_{ik}) + \sum_{k=1}^K \frac{1}{2} log(2 \pi s^2_k) + \text{const.}
+\end{aligned}
+$$
+
+We use this definition of the ELBO to monitor convergence in the CAVI algorithm implemented in the file `source\variational_inference_fn.R`.
+
+# Problem 3: Fit to data
+
+```{r}
+#| label: load data
+
+data("faithful")
+
+scale_factor <- sd(faithful$waiting)
+
+y_vec <- faithful$waiting / scale_factor
+
+K_expected <- 2
+```
+
+```{r}
+#| label: run gibbs functions
+
+set.seed(978)
+
+# Run 1 Gibbs chain on Old Faithful data
+of_gibbs_100 <- gibbs_k_gauss(
+  y = y_vec,
+  K = K_expected,
+  mu0 = 70 / scale_factor,
+  sigma2 = 100
+)
+
+of_gibbs_100_summ <- summ_gibbs_mix(of_gibbs_100)
+
+set.seed(617)
+
+# Run second Gibbs chain with lower proposed variance
+of_gibbs_10 <- gibbs_k_gauss(
+  y = y_vec,
+  K = K_expected,
+  mu0 = 70 / scale_factor,
+  sigma2 = 10
+)
+
+of_gibbs_10_summ <- summ_gibbs_mix(of_gibbs_10)
+
+set.seed(508)
+
+# Run third Gibbs chain with even lower proposed variance
+of_gibbs_1 <- gibbs_k_gauss(
+  y = y_vec,
+  K = K_expected,
+  mu0 = 70 / scale_factor,
+  sigma2 = 1
+)
+
+of_gibbs_1_summ <- summ_gibbs_mix(of_gibbs_1)
+```
+
+```{r}
+#| label: run cavi function
+
+# Run CAVI function on Old Faithful data
+of_cavi <- cavi_k_gauss(
+  y = y_vec,
+  K = K_expected + 4,
+  mu0 = c(50, 80) / scale_factor,
+  s2_0 = c(10, 10) / scale_factor,
+  sigma2 = 100,
+  tol = 1e-6
+)
+```
+
