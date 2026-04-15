@@ -273,4 +273,21 @@ mean(time_tbl$time[1:3]) / time_tbl$time[4]
 
 # Problem 4: simulation study on the cluster
 
+The last scenario did not finish running for us, and we were not able to produce plots of our results.
+
+```{r}
+#| label: process sim results
+
+source(here("source", "process_sim_results.R"))
+```
+
+However, results from these simulations show that there is still likely a problem with the estimates from our CAVI algorithm. These estimates rarely cover the true group means, whereas Gibbs sampler-derived estimates cover the true mean in about 82-86% of simulations. Likewise, the bias for our Gibbs-sampler derived estimates is low, demonstrating that we are able to recover the true group means using this method. On the other hand, the bias of our CAVI-derived group means is high, and these estimates again appear to be driven by the overall mean instead of specific group means.
+
+```{r}
+#| label: display sim results
+
+kable(bias_df) %>% kable_classic(full_width = F)
+
+kable(coverage_df) %>% kable_classic(full_width = F)
+```
 
