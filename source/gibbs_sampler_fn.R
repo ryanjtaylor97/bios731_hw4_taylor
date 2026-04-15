@@ -144,15 +144,15 @@ summ_gibbs_mix <- function(model, burn_pct = 0.2){
                    FUN = function(x) matrix(
                      c(mean(x),
                        var(x),
-                       quantile(x, 0.05),
-                       quantile(x, 0.95)),
+                       quantile(x, 0.025),
+                       quantile(x, 0.975)),
                      ncol = 1
                    ),
                    simplify = T)
 
   # Convert to formatted table
   mu_mean_tbl <- data.frame(mu_mean) %>%
-    mutate(statistic = c("mean", "variance", "5%", "95%"),
+    mutate(statistic = c("mean", "variance", "2.5%", "97.5%"),
            .before = everything()) %>%
     rename_with(.cols = starts_with("X"),
                 ~str_replace(., "X", "group_"))
@@ -173,7 +173,7 @@ summ_gibbs_mix <- function(model, burn_pct = 0.2){
 
   return(list(
     "mean_summary" = mu_mean_tbl,
-         "group_labels" = group_assignments,
-         "group_pcts" = labels_tbl
-    ))
+    "group_labels" = group_assignments,
+    "group_pcts" = labels_tbl
+  ))
 }

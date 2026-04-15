@@ -7,7 +7,7 @@ This project organizes work and solutions for the BIOS 731 Homework 4, focused o
 ## Structure
 
 * `analysis/` contains the Quarto Markdown files that implement and report the Bayesian K-Mixture Model.
-* `data/` is a subdirectory of simulation results and a saved version of the "Old Faithful" data.
+* `data/` is a subdirectory of simulation results.
 * `results/` contains results exported by the analysis files
 * `source/` contains bare scripts containing functions sourced by the full analysis files
 * `simulations/` contains bare scripts implementing the simulation study in problem 4

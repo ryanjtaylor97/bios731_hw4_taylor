@@ -126,8 +126,11 @@ cavi_k_gauss <- function(
 
   return(list(
     "means" = m_vec,
+    "variances" = s2_vec,
     "group_probs" = psi_mx,
     "elbo" = elbo_vec[seq_len(iter)],
     "time" = timing
   ))
 }
+
+
