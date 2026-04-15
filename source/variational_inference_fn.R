@@ -103,6 +103,8 @@ cavi_k_gauss <- function(
     ### Check convergence
     if (iter > 1 && abs(elbo_vec[iter] - elbo_vec[iter-1]) < tol){
       converge_count <- converge_count + 1
+    } else{
+      converge_count <- 0
     }
 
     if(converge_count >= 10){ break }
